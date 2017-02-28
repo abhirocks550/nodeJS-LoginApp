@@ -39,7 +39,7 @@ router.post('/register', function(req, res){
 		res.render('register',{
 			errors:errors
 		});
-		
+
 	} else {
 
 		var newUser = new User({
