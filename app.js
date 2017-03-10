@@ -15,7 +15,7 @@ var routes = require('./routes/index');
 var users = require('./routes/users');
 
 // Connection URL
-var url = 'mongodb://username:password@url:port/databasename';
+var url = 'mongodb://root:root@ds147797.mlab.com:47797/tech';
 mongoose.connect(url);
 
 // Init App

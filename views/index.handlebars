@@ -1,6 +1,310 @@
-<h2 class="page-header">
-Dashboard
-</h2>
-<p>
-Welcome to your dashboard
-</p>
+<script src="https://code.jquery.com/jquery-3.1.1.min.js" integrity="sha256-hVVnYaiADRTO2PzUGmuLJr8BLUSjGIZsDYGmIJLv2b8=" crossorigin="anonymous"></script>
+
+<!--==================== CSS ===============-->
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+<link rel="stylesheet" href="/css/bot.css">
+
+<!--==================== SCRIPT ===============-->
+
+<script>
+	var conversation_length;
+	var teamid, userid, leaveid, leaveFromDate, leaveToDate;
+	var pos_sugesstion_array = ["Would you like me to check for another date?",
+		"Sorry. How about i check for another date?", "Would you be interested for a different date?"
+	];
+	var flag = 0;
+	var screen_div;
+	var conversation = [];
+	var context;
+	var accessToken = "5ea19c56a7d64f6ebdd441c4ccb9c550";
+	var baseUrl = "https://api.api.ai/v1/";
+
+	$(document).ready(function() {
+
+		// Check input textbox value and give error
+		$("#input").keyup(function() {
+			if ($("#input").val() === "") {
+				$("#input-div").addClass("has-error");
+			} else {
+				$("#input-div").removeClass("has-error");
+			}
+		})
+
+		$('#chat_screen').css("display", "none");
+		$("#span_icon").removeClass("glyphicon-chevron-down").addClass("glyphicon-chevron-up");
+
+		$("#input").keypress(function(event) {
+			if (event.which == 13) {
+				event.preventDefault();
+				if ($("#input").val() !== "") {
+					// $("#input-div").removeClass("has-error");
+					document.getElementById('input').placeholder = "Enter message here..";
+					send($("#input").val());
+					document.getElementById('input').value = '';
+					$('#screen-div').scrollTop($('#screen-div').prop("clientHeight"));
+				} else {
+					// $("#input-div").addClass("has-error");
+					document.getElementById('input').placeholder = "Please enter an input";
+				}
+			}
+		});
+		$("#sendmsg").click(function(event) {
+			if ($("#input").val() !== "") {
+				// $("#input-div").removeClass("has-error");
+				document.getElementById('input').placeholder = "Enter message here..";
+				send($("#input").val());
+				document.getElementById('input').value = '';
+				$('#screen-div').scrollTop($('#screen-div').prop("clientHeight"));
+			} else {
+				// $("#input-div").addClass("has-error");
+				document.getElementById('input').placeholder = "Please enter an input";
+			}
+
+		});
+		$("#hide_button").click(function(event) {
+
+			if (flag == 0) {
+				$('#chat_screen').css("display", "block");
+				// $('#screen-div').html(" ");
+
+
+				$("#span_icon").removeClass("glyphicon-chevron-up").addClass("glyphicon-chevron-down");
+				flag = 1;
+			} else if (flag == 1) {
+				$("#span_icon").removeClass("glyphicon-chevron-down").addClass("glyphicon-chevron-up");
+				$('#chat_screen').css("display", "none");
+				conversation_length = conversation.length;
+				flag = 0;
+			}
+		});
+
+		setInterval(checkIncomingMessages, 500);
+	});
+
+
+	function send(text) {
+		conversation.push("{{user.name}}" + " : " + text + " ");
+		showConvo("{{user.name}}" + " : " + text + " ");
+		responseLoading();
+		setInterval(2000);
+		$.ajax({
+			type: "POST",
+			url: baseUrl + "query?v=20150910",
+			contentType: "application/json; charset=utf-8",
+			dataType: "json",
+			headers: {
+				"Authorization": "Bearer " + accessToken
+			},
+			data: JSON.stringify({
+				query: text,
+				lang: "en",
+				sessionId: "somerandomthing"
+			}),
+
+			success: function(data) {
+				console.log(data.result);
+
+				response = data.result.fulfillment.speech;
+
+				conversation.push("Response : " + data.result.fulfillment.speech + " ")
+
+				if (data.result.fulfillment.data !== undefined && data.result.fulfillment.data.checkConflict === "true") {
+					// responseLoading();
+					checkConflict("abc", data.result.fulfillment.data.fromDate, data.result.fulfillment.data.toDate);
+				}
+
+				if (data.result.fulfillment.speech !== "leave_status_check" && data.result.fulfillment.speech !== "suggestion_check") {
+					showConvo("Response : " + data.result.fulfillment.speech + " ");
+				}
+				if (data.result.fulfillment.speech === "leave_status_check") {
+					console.log(data.result.fulfillment.speech);
+					leaveStatusCheck("{{user.username}}", leaveid);
+				}
+				if (data.result.fulfillment.speech === "suggestion_check") {
+					dateSuggestion(userid, teamid, leaveFromDate, leaveToDate);
+				}
+
+			},
+
+			error: function() {
+				alert("Internal Server Error");
+			}
+		});
+
+	}
+
+	function showConvo(val) {
+
+		if (val.includes("{{user.name}}")) {
+			screen_div = document.getElementById("screen-div");
+			var user_msg_div = document.createElement("div");
+			var user_msg_content = document.createTextNode(val);
+			user_msg_div.appendChild(user_msg_content);
+			user_msg_div.className = "user-msg";
+			user_msg_div.id = "user_msg";
+			screen_div.appendChild(user_msg_div);
+
+		} else if (val.includes("Response : ")) {
+
+			responseLoading_remove();
+			var resp_msg_div = document.createElement('div');
+			var resp_msg_content = document.createTextNode(val);
+			resp_msg_div.appendChild(resp_msg_content);
+			resp_msg_div.className = "resp-msg";
+			resp_msg_div.id = "resp_msg";
+			screen_div.appendChild(resp_msg_div);
+			$('#screen-div').scrollTop($(document).height());
+		}
+
+		console.log(conversation);
+	}
+
+	function responseLoading() {
+		screen_div = document.getElementById("screen-div");
+		var loading_msg_div = document.createElement('div');
+		var loading_msg_content = document.createTextNode("Typing..");
+		loading_msg_div.appendChild(loading_msg_content);
+		loading_msg_div.className = "resp-msg";
+		loading_msg_div.id = "loading_msg";
+		screen_div.appendChild(loading_msg_div);
+		setTimeout(2000);
+
+	}
+
+	function responseLoading_remove() {
+		var div = document.getElementById('loading_msg');
+		if (div !== null) {
+			$('#loading_msg').remove();
+		}
+	}
+
+	function checkConflict(name, fromDate, toDate) {
+
+		$.ajax({
+			type: "GET",
+			url: "https://wt-335f1aceee3f10eea9d216d4f0e53c6d-0.run.webtask.io/main-chatbot-conflict-checker?uname=" + "{{user.username}}" + "&from=" + fromDate + "&to=" + toDate,
+			success: function(data) {
+
+				conversation.push("Response : " + data.message + " ")
+				showConvo("Response : " + data.message + " ");
+				leaveid = data.leaveid;
+				userid = data.userid;
+				teamid = data.teamid;
+				leaveFromDate = data.fromdate;
+				leaveToDate = data.todate;
+
+				console.log(data.leaveid + "===========" + data.userid);
+				if (data.conflict === 'true') {
+					var response_index = Math.floor((Math.random() * pos_sugesstion_array.length));
+					conversation.push("Response : " + pos_sugesstion_array[response_index] + " ")
+					responseLoading_remove();
+					setTimeout(1000)
+					showConvo("Response : " + pos_sugesstion_array[response_index]);
+
+				}
+
+			},
+
+			error: function() {
+				$("#loading_msg").remove();
+				alert("Internal Server Error");
+			}
+		});
+
+	}
+
+
+	function leaveStatusCheck(userid, leaveid) {
+		console.log("In leave status :" + userid + " " + leaveid);
+		$.ajax({
+			type: "GET",
+			url: "https://wt-335f1aceee3f10eea9d216d4f0e53c6d-0.run.webtask.io/leave-status?uname=" + userid ,
+			success: function(data) {
+				conversation.push("Response : " + data + " ")
+				responseLoading_remove();
+				showConvo("Response : " + data + " ");
+				console.log(data);
+			},
+
+			error: function() {
+				$("#loading_msg").remove();
+				alert("Internal Server Error");
+			}
+		});
+
+
+
+	}
+
+
+
+
+	function dateSuggestion(uid, tid, from, to) {
+
+		$.ajax({
+			type: "GET",
+			url: "https://wt-335f1aceee3f10eea9d216d4f0e53c6d-0.run.webtask.io/date-suggestion?uid=" + uid + "&tid=" + tid + "&from=" + from + "&to=" + to,
+			success: function(data) {
+				conversation.push("Response : " + data + " ")
+				responseLoading_remove();
+
+				showConvo("Response : " + data + " ");
+				//alert("after suggestion");
+				console.log(data);
+			},
+
+			error: function() {
+				$("#loading_msg").remove();
+				alert("Internal Server Error");
+			}
+		});
+
+
+
+	}
+
+
+
+
+	function checkIncomingMessages() {
+		if (conversation.length > conversation_length) {
+			("you have " + conversation.length - conversation_length + " unread messages")
+		}
+	}
+</script>
+
+<div id="container">
+	<div class="chat-screen-header">
+		<div>
+			<h1 class="chat-screen-header-title">Harbinger bot</h1>
+			<div>
+				<button type="button" class="btn message_num disabled" id="message_num_btn">
+
+            </button>
+			</div>
+		</div>
+		<div>
+			<button type="button" class="btn hide_button" id="hide_button">
+                <span id="span_icon" class="glyphicon glyphicon-chevron-down" aria-hidden="true"></span>
+            </button>
+		</div>
+	</div>
+
+	<div id="chat_screen" class="chat-screen">
+		<div id="screen-div" class="screen">
+
+
+		</div>
+		<div id="controls" class="controls">
+			<div id="input-div" class="col-xs-9 input-div-margin">
+				<input class="form-control input-text" type="text" id="input" placeholder="Enter message here.." autocomplete="on">
+			</div>
+			<div id="button-div" class="col-xs-3 button-div-margin">
+				<button class="form-control send-button" id="sendmsg">Send</button>
+			</div>
+
+		</div>
+
+	</div>
+
+</div>
